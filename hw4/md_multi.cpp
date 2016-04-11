@@ -2,14 +2,14 @@
 #include <cstdlib>
 #include <cmath>
 #include <vector>
-#include <list>
 #include <cassert>
 #include <iostream>
 #include <random>
 #include <pthread.h>
 
+#define DIMENSION 2
+
 using std::vector;
-using std::list;
 using std::cout;
 
 typedef vector<double> coordinate_vector;
@@ -18,9 +18,8 @@ double potentials(const vector<coordinate_vector> &pos_mat) {
   double pot = 0;
   for (unsigned int i=0; i < pos_mat.size(); ++i) {
     for (unsigned int j=i+1; j < pos_mat.size(); ++j) {
-      assert(pos_mat[i].size()==pos_mat[j].size());
       double dist2 = 0.0;
-      for (unsigned int k=0; k<pos_mat[i].size(); ++k) {
+      for (unsigned int k=0; k<DIMENSION; ++k) {
         double d = pos_mat[i][k]-pos_mat[j][k];
         dist2 += d*d;
       }
@@ -44,7 +43,7 @@ void* force_thread(void *args_p) {
   vector<coordinate_vector> &result_vec = *(args->result_vec_p);
 
   for (unsigned int i=args->range_begin; i<args->range_end; ++i) {
-    for (unsigned int j=0; j<pos_mat[i].size(); ++j) {
+    for (unsigned int j=0; j<DIMENSION; ++j) {
       double orig_pos = pos_mat[i][j];
       pos_mat[i][j] += Delta;
       double new_pot = potentials(pos_mat);
@@ -61,7 +60,7 @@ vector<coordinate_vector> acceleration(const vector<coordinate_vector> &pos_mat,
   // Allocate result space
   vector<coordinate_vector> result_vec(pos_mat.size());
   for (unsigned int i=0; i<pos_mat.size(); ++i) 
-    result_vec[i].resize(pos_mat[i].size());
+    result_vec[i].resize(DIMENSION);
   
   // Prepare arguments for each thread
   unsigned int BatchSize = pos_mat.size()/NThread;
@@ -89,7 +88,7 @@ vector<coordinate_vector> acceleration(const vector<coordinate_vector> &pos_mat,
   }
   
   for (unsigned int i=0; i<result_vec.size(); ++i) {
-    for (unsigned int j=0; j<result_vec[i].size(); ++j) {
+    for (unsigned int j=0; j<DIMENSION; ++j) {
       result_vec[i][j] /= mass_mat[i];
     }
   }
@@ -102,7 +101,7 @@ void velocity_verlet(vector<coordinate_vector> &pos_mat,
   //Step 1: pos_mat += vel_mat*TimeStep + accel_mat*TimeStep*TimeStep/2
   vector<coordinate_vector> accel_mat = acceleration(pos_mat, mass_mat);
   for (unsigned int i=0; i<pos_mat.size(); ++i) {
-    for (unsigned int j=0; j<pos_mat[i].size(); ++j) {
+    for (unsigned int j=0; j<DIMENSION; ++j) {
       pos_mat[i][j] += vel_mat[i][j]*TimeStep + accel_mat[i][j]*TimeStep*TimeStep/2;
       if (abs(pos_mat[i][j]) > BoxSize) {
         vel_mat[i][j] = -vel_mat[i][j];
@@ -113,8 +112,8 @@ void velocity_verlet(vector<coordinate_vector> &pos_mat,
   //Step 2: new_half_vel = vel_mat + accel_mat*TimeStep/2
   vector<coordinate_vector> new_half_vel(vel_mat.size());
   for (unsigned int i=0; i<new_half_vel.size(); ++i) {
-    new_half_vel[i].reserve(vel_mat[i].size());
-    for (unsigned int j=0; j<new_half_vel[i].size(); ++j) {
+    new_half_vel[i].reserve(DIMENSION);
+    for (unsigned int j=0; j<DIMENSION; ++j) {
       new_half_vel[i].push_back(vel_mat[i][j] + accel_mat[i][j]*TimeStep/2);
     }
   }
@@ -122,7 +121,7 @@ void velocity_verlet(vector<coordinate_vector> &pos_mat,
   //Step 3: new_vel_mat = vel_mat + (accel_mat+new_accel_mat)*TimeStep/2
   vector<coordinate_vector> new_accel_mat = acceleration(pos_mat, mass_mat);
   for (unsigned int i=0; i<vel_mat.size(); ++i) {
-    for (unsigned int j=0; j<vel_mat[i].size(); ++j) {
+    for (unsigned int j=0; j<DIMENSION; ++j) {
       vel_mat[i][j] += (accel_mat[i][j]+new_accel_mat[i][j])*TimeStep/2;
     } 
   }
@@ -134,7 +133,7 @@ double energy(const vector<coordinate_vector> &pos_mat,
   double ener = 0;
   for (unsigned int i=0; i<vel_mat.size(); ++i) {
     double v2 = 0;
-    for (unsigned int j=0; j<vel_mat[i].size(); ++j) {
+    for (unsigned int j=0; j<DIMENSION; ++j) {
       v2 += vel_mat[i][j]*vel_mat[i][j];
     }
     ener += mass_mat[i]*v2;
@@ -151,7 +150,7 @@ void print_pos(const vector<coordinate_vector> &pos_mat,
        <<"Step: " <<step <<" Energy: " <<energy <<'\n';
   for (unsigned int i=0; i<pos_mat.size(); ++i) {
     cout <<'A';
-    for (unsigned int j=0; j<pos_mat[i].size(); ++j) {
+    for (unsigned int j=0; j<DIMENSION; ++j) {
       cout <<'\t' <<pos_mat[i][j];
     }
     cout <<'\n' <<std::flush;
@@ -167,16 +166,16 @@ int main() {
   for (int i=-11;i<11;++i) {
     for (int j=-11;j<11;++j) {
       coordinate_vector p;
-      p.push_back(i);
-      p.push_back(j);
+      p.push_back(i*LJEplison);
+      p.push_back(j*LJEplison);
       my_pos.push_back(p);
 
       coordinate_vector v;
-      v.push_back(gasdev(rng));
-      v.push_back(gasdev(rng));
+      v.push_back(gasdev(rng)*Lambda);
+      v.push_back(gasdev(rng)*Lambda);
       my_vel.push_back(v);
 
-      my_mass.push_back(1);
+      my_mass.push_back(Mass);
     }
   }
 
