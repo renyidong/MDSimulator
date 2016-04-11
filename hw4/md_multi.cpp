@@ -1,3 +1,4 @@
+#include "params.h"
 #include <cstdlib>
 #include <cmath>
 #include <vector>
@@ -11,12 +12,6 @@ using std::vector;
 using std::list;
 using std::cout;
 
-#define LJEplison 1
-#define LJSigma 1
-#define Delta 0.0001
-#define NThread 6
-
-
 typedef vector<double> coordinate_vector;
 
 double potentials(const vector<coordinate_vector> &pos_mat) {
@@ -26,7 +21,8 @@ double potentials(const vector<coordinate_vector> &pos_mat) {
       assert(pos_mat[i].size()==pos_mat[j].size());
       double dist2 = 0.0;
       for (unsigned int k=0; k<pos_mat[i].size(); ++k) {
-        dist2 += pow(pos_mat[i][k]-pos_mat[j][k], 2);
+        double d = pos_mat[i][k]-pos_mat[j][k];
+        dist2 += d*d;
       }
       pot += 4*LJEplison * ( pow(LJSigma, 12)/pow(dist2, 6) - pow(LJSigma, 6)/pow(dist2, 3) );
     }
@@ -102,15 +98,13 @@ vector<coordinate_vector> acceleration(const vector<coordinate_vector> &pos_mat,
 
 void velocity_verlet(vector<coordinate_vector> &pos_mat,
                      vector<coordinate_vector> &vel_mat,
-                     const vector<double>      &mass_mat,
-                     double                    steptime,
-                     int                       box_size) {
+                     const vector<double>      &mass_mat) {
   //Step 1: pos_mat += vel_mat*TimeStep + accel_mat*TimeStep*TimeStep/2
   vector<coordinate_vector> accel_mat = acceleration(pos_mat, mass_mat);
   for (unsigned int i=0; i<pos_mat.size(); ++i) {
     for (unsigned int j=0; j<pos_mat[i].size(); ++j) {
-      pos_mat[i][j] += vel_mat[i][j]*steptime + accel_mat[i][j]*steptime*steptime/2;
-      if (abs(pos_mat[i][j]) > box_size) {
+      pos_mat[i][j] += vel_mat[i][j]*TimeStep + accel_mat[i][j]*TimeStep*TimeStep/2;
+      if (abs(pos_mat[i][j]) > BoxSize) {
         vel_mat[i][j] = -vel_mat[i][j];
       }
     }
@@ -121,7 +115,7 @@ void velocity_verlet(vector<coordinate_vector> &pos_mat,
   for (unsigned int i=0; i<new_half_vel.size(); ++i) {
     new_half_vel[i].reserve(vel_mat[i].size());
     for (unsigned int j=0; j<new_half_vel[i].size(); ++j) {
-      new_half_vel[i].push_back(vel_mat[i][j] + accel_mat[i][j]*steptime/2);
+      new_half_vel[i].push_back(vel_mat[i][j] + accel_mat[i][j]*TimeStep/2);
     }
   }
 
@@ -129,7 +123,7 @@ void velocity_verlet(vector<coordinate_vector> &pos_mat,
   vector<coordinate_vector> new_accel_mat = acceleration(pos_mat, mass_mat);
   for (unsigned int i=0; i<vel_mat.size(); ++i) {
     for (unsigned int j=0; j<vel_mat[i].size(); ++j) {
-      vel_mat[i][j] += (accel_mat[i][j]+new_accel_mat[i][j])*steptime/2;
+      vel_mat[i][j] += (accel_mat[i][j]+new_accel_mat[i][j])*TimeStep/2;
     } 
   }
 }
@@ -186,14 +180,9 @@ int main() {
     }
   }
 
-  double my_box=15;
-  unsigned int TotalStep=50;
-  unsigned int OutputInterval=10;
-  double steptime = 5e-3;
-
   print_pos(my_pos, energy(my_pos, my_vel, my_mass), 0);
-  for (unsigned int i=1; i<=TotalStep; ++i) {
-    velocity_verlet(my_pos, my_vel, my_mass, steptime, my_box);
+  for (unsigned int i=1; i<=TotalSteps; ++i) {
+    velocity_verlet(my_pos, my_vel, my_mass);
     if (i%OutputInterval==0) {
       print_pos(my_pos, energy(my_pos, my_vel, my_mass), i);
     }
