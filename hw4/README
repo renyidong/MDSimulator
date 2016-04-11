@@ -1,0 +1,4 @@
+Compile with:
+g++ -std=c++11 -Ofast -lpthread md_multi.cpp
+
+With 484 atoms, on Intel(R) Core(TM) i7-3520M CPU, (2 cores, 4 threads), each TimeStep takes ~1 second to simulate.
