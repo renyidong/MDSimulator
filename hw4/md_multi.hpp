@@ -16,7 +16,7 @@ using std::array;
 typedef array<double, DIMENSION> coordinate_vector;
 
 
-namespace MD{
+namespace MD {
 
 double  LJEplison,                      // Eplison in LJ potential equation
         LJSigma,                        // Sigma in LJ potential equation, equilibrium distance
@@ -29,6 +29,9 @@ unsigned int  NThread,                  // Number of threads to spawn, sugguest 
               TotalSteps,               // Number of TimeSteps to be simulated
               OutputInterval;           // Print output each nth step
 
+enum class boundary_condition_t {Periodic, Reflective};
+
+array<boundary_condition_t, DIMENSION> BoundaryConditions;
 
 double potentials(const vector<coordinate_vector> &pos_mat) {
   double pot = 0;
@@ -37,8 +40,10 @@ double potentials(const vector<coordinate_vector> &pos_mat) {
       double dist2 = 0.0;
       for (unsigned int k=0; k<DIMENSION; ++k) {
         double d = pos_mat[i][k]-pos_mat[j][k];
-        if      (d >  BoxSize) d -= 2*BoxSize;
-        else if (d < -BoxSize) d += 2*BoxSize;
+        if (BoundaryConditions[k] == boundary_condition_t::Periodic ) {
+            if      (d >  BoxSize) d -= 2*BoxSize;
+            else if (d < -BoxSize) d += 2*BoxSize;
+        }
         dist2 += d * d;
       }
       pot += 4*LJEplison * ( pow(LJSigma*LJSigma/dist2, 6) - pow(LJSigma*LJSigma/dist2, 3) );
@@ -113,8 +118,10 @@ void velocity_verlet(vector<coordinate_vector> &pos_mat,
   for (size_t i=0; i<pos_mat.size(); ++i) {
     for (unsigned int j=0; j<DIMENSION; ++j) {
       pos_mat[i][j] += vel_mat[i][j]*TimeStep + accel_mat[i][j]*TimeStep*TimeStep/2;
-      if      (pos_mat[i][j] >  BoxSize ) pos_mat[i][j] -= 2*BoxSize;
-      else if (pos_mat[i][j] < -BoxSize ) pos_mat[i][j] += 2*BoxSize;
+      if (BoundaryConditions[j] == boundary_condition_t::Periodic ) {
+        if      (pos_mat[i][j] >  BoxSize ) pos_mat[i][j] -= 2*BoxSize;
+        else if (pos_mat[i][j] < -BoxSize ) pos_mat[i][j] += 2*BoxSize;
+      }
     }
   }
 
@@ -131,6 +138,9 @@ void velocity_verlet(vector<coordinate_vector> &pos_mat,
   for (size_t i=0; i<vel_mat.size(); ++i) {
     for (unsigned int j=0; j<DIMENSION; ++j) {
       vel_mat[i][j] += (accel_mat[i][j]+new_accel_mat[i][j])*TimeStep/2;
+      if (BoundaryConditions[j] == boundary_condition_t::Reflective ) {
+        if (abs(pos_mat[i][j]) >  BoxSize ) vel_mat[i][j] = -vel_mat[i][j];
+      }
     } 
   }
 }
