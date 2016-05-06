@@ -3,7 +3,7 @@
 
 int main() {
   // Parameters. For usage see "md_multi.hpp"
-  MD::NThread         =2;
+  MD::NThread         =4;
   MD::LJEplison[0][0] =1.0e-1;
   MD::LJSigma[0][0]   =1.0;
   MD::BoxSize         =10.0;

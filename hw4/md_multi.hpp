@@ -94,13 +94,12 @@ vector<coordinate_vector> acceleration(const vector<coordinate_vector> &pos_mat,
   
   // Prepare arguments for each thread and spawn force threads 
   pthread_t children[NThread];
-  size_t BatchSize = pos_mat.size()/NThread;
   vector<force_thread_arg_t> force_thread_args(NThread);
   for (unsigned int i=0; i<NThread; ++i) {
     force_thread_args[i].pos_mat  = pos_mat;
     force_thread_args[i].orig_pot = orig_pot;
-    force_thread_args[i].range_begin = i*BatchSize;
-    if (i != NThread-1) force_thread_args[i].range_end = (i+1)*BatchSize;
+    force_thread_args[i].range_begin = pos_mat.size()*i/NThread;
+    if (i != NThread-1) force_thread_args[i].range_end = pos_mat.size()*(i+1)/NThread;
     else                force_thread_args[i].range_end = pos_mat.size();
     force_thread_args[i].result_vec_p = &result_vec;
     force_thread_args[i].type_vec_p   = &type_vec;
