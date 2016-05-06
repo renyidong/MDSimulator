@@ -3,13 +3,13 @@
 
 int main() {
   // Parameters. For usage see "md_multi.hpp"
-  MD::NThread         =23;
+  MD::NThread         =2;
   MD::LJEplison       =1.0e-1;
   MD::LJSigma         =1.0;
   MD::BoxSize         =15.0;
   MD::Delta           =1.0e-12;
   MD::TimeStep        =1e-5;
-  MD::TotalSteps      =5000;
+  MD::TotalSteps      =100;
   MD::OutputInterval  =10;
   
   
@@ -21,17 +21,17 @@ int main() {
   
   double mass   = 1.0;
   double Lambda = 20;
-  int n = 11;
-  for (int i=-n;i<n+1;++i) {
-    for (int j=-n;j<n+1;++j) {
+  int n = 6;
+  for (int i=-n;i<n;++i) {
+    for (int j=-n;j<n;++j) {
       coordinate_vector p;
-      p.push_back(i*MD::BoxSize/(n+0.5));
-      p.push_back(j*MD::BoxSize/(n+0.5));
+      p[0] = i*MD::BoxSize/(n+0.5);
+      p[1] = j*MD::BoxSize/(n+0.5);
       my_pos.push_back(p);
       
       coordinate_vector v;
-      v.push_back(gasdev(rng)*Lambda);
-      v.push_back(gasdev(rng)*Lambda);
+      v[0]=gasdev(rng)*Lambda;
+      v[1]=gasdev(rng)*Lambda;
       my_vel.push_back(v);
       
       my_mass.push_back(mass);
