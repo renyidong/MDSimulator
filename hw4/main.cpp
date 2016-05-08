@@ -6,7 +6,7 @@ int main() {
   MD::NThread         =4;
   MD::LJEplison[0][0] =1.0e-1;
   MD::LJSigma[0][0]   =1.0;
-  MD::BoxSize         =10.0;
+  MD::BoxSize         ={5, 10};
   MD::Delta           =1.0e-12;
   MD::TimeStep        =3e-4;
   MD::TotalSteps      =1000;
@@ -25,8 +25,8 @@ int main() {
   for (int i=-n;i<n;++i) {
     for (int j=-n;j<n;++j) {
       coordinate_vector p;
-      p[0] = i*MD::BoxSize/(n+0.5);
-      p[1] = j*MD::BoxSize/(n+0.5);
+      p[0] = i*MD::BoxSize[0]/n;
+      p[1] = j*MD::BoxSize[1]/n;
       my_pos_mat.push_back(p);
       
       coordinate_vector v;
