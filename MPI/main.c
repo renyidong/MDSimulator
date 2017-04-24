@@ -16,12 +16,7 @@ uint64_t GetTimeBase() {
 
 // ============================= Constants ====================================
 #define DIMENSION 3
-const int n_row = 6;
-const unsigned int TotalSteps = 10;
-
 const double BoxSize = 100.0;
-const size_t NThread = 1;
-
 const double TimeStep = 1E-3;
 const double LJEplison=1.0, LJSigma=1.0, Mass=1.0;
 const double Delta = 1.0e-12;
@@ -33,8 +28,12 @@ int mpi_commsize, mpi_my_rank;
 double *global_position;
 double *local_position;
 double *velocity, *acceleration, *old_acceleration;
+double old_potential;
+size_t global_size, rank_begin, rank_end, local_size;
 
-size_t global_size=0, rank_begin, rank_end, local_size;
+int NThread;
+int NRow;
+unsigned long TotalSteps;
 
 // ======================== Other Functions ===================================
 double dist_square(const double *x1, const double *x2) {
@@ -66,25 +65,70 @@ double potentials(size_t overlay_index, const double *overlay_position) {
   }
   return pot;
 }
+void update_acceleration_one(size_t index) {
+  double overlay[DIMENSION];
+  for (int j=0; j<DIMENSION; ++j) overlay[j] = global_position[DIMENSION*(rank_begin+index) + j];
+  for (int j=0; j<DIMENSION; ++j) {
+    overlay[j] += Delta;
+    double new_pot = potentials(index, overlay);
+    acceleration[index*DIMENSION+j] = (old_potential-new_pot)/Delta/Mass;
+    overlay[j] = global_position[DIMENSION*(rank_begin+index) + j];
+  }
+}
+
+typedef struct {
+  size_t begin;
+  size_t end;
+  pthread_barrier_t *barrier;
+} potential_thread_arg_t;
+
+void* potential_thread(void * vargs) {
+  potential_thread_arg_t *args = (potential_thread_arg_t*)vargs;
+  size_t begin = args->begin;
+  size_t end = args->end;
+  pthread_barrier_t *barrier = args->barrier;
+  while(1) {
+    pthread_barrier_wait(barrier);
+    for (size_t i=begin; i<end; ++i) {
+      update_acceleration_one(i);
+    }
+    pthread_barrier_wait(barrier);
+  }
+  return NULL;
+} 
 
 void update_acceleration() {
-  double old_pot = potentials(0, global_position);
+  old_potential = potentials(0, global_position);
   {
     double *tmp=old_acceleration;
     old_acceleration = acceleration;
     acceleration = tmp;
   }
   
-  for (size_t i=0; i<local_size; ++i) {
-    double overlay[DIMENSION];
-    for (int j=0; j<DIMENSION; ++j) overlay[j] = global_position[DIMENSION*(rank_begin+i) + j];
-    for (int j=0; j<DIMENSION; ++j) {
-      overlay[j] += Delta;
-      double new_pot = potentials(i, overlay);
-      acceleration[i*DIMENSION+j] = (old_pot-new_pot)/Delta/Mass;
-      overlay[j] = global_position[DIMENSION*(rank_begin+i) + j];
+  size_t thread_size = local_size/NThread;
+  static int thread_ready=0;
+  static pthread_barrier_t *barrier=NULL;
+  if (!thread_ready) {
+    thread_ready = 1;
+    barrier = malloc(sizeof(pthread_barrier_t));
+    pthread_barrier_init(barrier, NULL, NThread);
+    assert(local_size%NThread == 0);
+    for (int i=1; i<NThread; ++i) {
+      potential_thread_arg_t *arg = malloc(sizeof(potential_thread_arg_t));
+      arg->begin = i*thread_size;
+      arg->end = (i+1)*thread_size;
+      arg->barrier = barrier;
+      pthread_t thread;
+      pthread_create(&thread, NULL, &potential_thread, arg);
+      pthread_detach(thread);
     }
   }
+  
+  pthread_barrier_wait(barrier);
+  for (size_t i=0; i<thread_size; ++i) {
+    update_acceleration_one(i);
+  }
+  pthread_barrier_wait(barrier);
 }
 
 void step() {
@@ -96,7 +140,6 @@ void step() {
   }
   
   // Exchange positions
-  fprintf(stderr, "%d\t%d\t%p\t%p\t%p\n", global_size, local_size, global_position, global_position+global_size*DIMENSION, local_position);;
   MPI_Allgather(local_position, local_size*DIMENSION, MPI_DOUBLE, global_position, local_size*DIMENSION, MPI_DOUBLE, MPI_COMM_WORLD);
   
   // Step 2: generate new acceleration
@@ -108,17 +151,22 @@ void step() {
   }
 }
 
-int main() {
-  MPI_Init( NULL, NULL);
+int main(int argc, char* argv[]) {
+  MPI_Init(0, NULL);
   MPI_Comm_size( MPI_COMM_WORLD, &mpi_commsize);
   MPI_Comm_rank( MPI_COMM_WORLD, &mpi_my_rank);
   
-  double time_begin, time_end;
-  if (mpi_my_rank==0) time_begin = MPI_Wtime();
-
+  if (argc != 4) {
+    printf("Usage: mpirun -n NRank %s Steps NRow NThread\n", argv[0]);
+    exit(EXIT_FAILURE);
+  }
+  TotalSteps = atol(argv[1]);
+  NRow = atoi(argv[2]);
+  NThread = atoi(argv[3]);
+  
   // Allocate
   if (mpi_my_rank==0) {
-    global_size = n_row*n_row*n_row;
+    global_size = NRow*NRow*NRow;
   }
   
   MPI_Bcast(&global_size, 1, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD);
@@ -135,9 +183,9 @@ int main() {
   // Initialize positions
   size_t inited = 0;
   if (mpi_my_rank == 0) {
-    for (int x=-n_row/2; x<n_row/2; ++x)
-      for (int y=-n_row/2; y<n_row/2; ++y)
-        for (int z=-n_row/2; z<n_row/2; ++z) {
+    for (int x=-NRow/2; x<NRow/2; ++x)
+      for (int y=-NRow/2; y<NRow/2; ++y)
+        for (int z=-NRow/2; z<NRow/2; ++z) {
           double *p = global_position + DIMENSION*inited;
           p[0] = x+0.5;
           p[1] = y+0.5;
@@ -157,13 +205,16 @@ int main() {
   }
   
   // Run
+  MPI_Barrier(MPI_COMM_WORLD);
+  double time_begin = MPI_Wtime();
   for (unsigned int t=0; t<TotalSteps; ++t) {
     step();
   }
+  MPI_Barrier(MPI_COMM_WORLD);
+  double time_end = MPI_Wtime();
   
   // End
   if (mpi_my_rank==0) {
-    time_end = MPI_Wtime();
     printf("%f\n", time_end-time_begin);
   }
   
