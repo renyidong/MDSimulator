@@ -1,0 +1,90 @@
+module mdsim;
+import java.lang.*;
+import java.io.*;
+import java.util.*;
+
+behavior MDSim {
+  static final double timestep = 1e-3;
+  static final int totalsteps = 1000;
+  static final int nrow = 3;
+  static final int world_size = 2*nrow*2*nrow*2*nrow;
+  Particle world[] = new Particle[world_size];
+  Random rng = new Random();
+  Worker workers[];
+
+  void printWorld(Object obj) {
+    world = (Particle[])obj;
+    System.out.format("%d\n", world_size);
+    System.out.format("\n");
+    for (int i=0; i<world_size; ++i) {
+      System.out.format("A %s\n", world[i]);
+    }
+  }
+
+  void intervalOutput(int t) {
+    if (t%10==0) {
+      workers[0]<-getWorld()@printWorld(token)@currentContinuation;
+    }
+  }
+
+  void act(String args[]) throws IOException {
+    // Read theaters.txt for threater setting
+    String[] theaters;
+    {
+      ArrayList _theaters = new ArrayList();
+      BufferedReader reader = new BufferedReader(new FileReader("theaters.txt"));
+      String line;
+      while ((line = reader.readLine()) != null) {
+        _theaters.add(line);
+      }
+      theaters = new String[_theaters.size()];
+      for (int i=0; i<_theaters.size(); ++i) {
+        theaters[i] = (String)_theaters.get(i);
+      }
+    }
+    int NThreads = theaters.length-1;
+
+    // Initialize grid
+    int index = 0;
+    for (int x=-nrow; x<nrow; ++x)
+      for (int y=-nrow; y<nrow; ++y)
+        for (int z=-nrow; z<nrow; ++z) {
+          double pos[] = new double[] {2*(x+0.5), 2*(y+0.5), 2*(z+0.5)};
+          world[index] = new Particle(pos);
+          // New position creates velocity
+          for (int i=0; i<pos.length; ++i) pos[i] += 50*timestep*(rng.nextFloat()-0.5);
+          world[index].set(pos);
+          index++;
+        }
+    
+    // spawn worker
+    workers = new Worker[NThreads];
+    int range_per_worker = world.length / NThreads;
+    for (int i=0; i<NThreads; ++i) {
+      UAN childUAN = new UAN("uan://"+theaters[0]+"/MDSim_Worker_"+i);
+      UAL childUAL = new UAL("rmsp://"+theaters[1+i] +"/MDSim_Worker_"+i);
+      workers[i] = new Worker(world, i*range_per_worker, range_per_worker) at (childUAN, childUAL);
+    }
+    // connect neigbors
+    for (int i=0; i<NThreads; ++i) {
+      for (int j=0; j<NThreads; ++j) {
+        if (i==j) continue;
+        workers[i]<-addNeighbor(workers[j]);
+      }
+    }
+
+    // run
+    token tk = step(0);
+    for (int t=1; t<totalsteps; ++t) {
+      tk = step(t) : waitfor(tk);
+    }
+  }
+
+  void step(int t) {
+    join {
+      for (int i=0; i<workers.length; ++i) workers[i]<-step(timestep);
+    }@join{
+      for (int i=0; i<workers.length; ++i) workers[i]<-update();
+    }@intervalOutput(t)@currentContinuation;
+  }
+}

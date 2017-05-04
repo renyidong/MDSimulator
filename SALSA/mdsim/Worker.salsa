@@ -1,0 +1,91 @@
+module mdsim;
+import java.lang.*;
+import java.io.*;
+import java.util.*;
+
+behavior Worker {
+  static final double DELTA = 1e-10;
+  Particle world[];
+  List neighbors;
+  int range_begin, range_len;
+
+  Worker(Particle world[], int range_begin, int range_len) {
+    this.world = Arrays.copyOf(world, world.length);
+    this.range_begin = range_begin;
+    this.range_len = range_len;
+    neighbors = new Vector();
+  }
+  
+  double global_potential(int overlay_index, Particle overlay) {
+    double pot = 0;
+    for (int i=0; i<world.length; ++i) {
+      Particle p1 = world[i];
+      if (i==overlay_index) p1 = overlay;
+      for (int j=i+1; j<world.length; ++j) {
+        Particle p2 = world[j];
+        if (j==overlay_index) p2 = overlay;
+        pot += p1.potentialTo(p2);
+      }
+    }
+    return pot;
+  }
+
+  Coordinate[] make_move(double timestep) {
+    double original_potential = global_potential(0, world[0]);
+    Coordinate move[] = new Coordinate[range_len];
+    for (int i=0; i<range_len; ++i) {
+      move[i] = new Coordinate();
+      Particle overlay;
+      int index = range_begin + i;
+      for (int j=0; j<Particle.DIMENSION; ++j) {
+        overlay = new Particle(world[index]);
+        overlay.component[j] += DELTA;
+        // A(x_n) * Delta^2
+        move[i].component[j] = (original_potential-global_potential(index, overlay))/ DELTA / overlay.Mass * timestep*timestep;
+      }
+    }
+    return move;
+  }
+
+  void step(double timestep) {
+    Coordinate move[] = make_move(timestep);
+    for (int i=0; i<range_len; ++i) {
+      Particle p = world[range_begin+i];
+      // x_n+1 = 2*x_n - x_n-1 + A(x_n)*t^2;
+      p.set(
+        p.get().
+        operation(2.0, Arithmetic.MUL).
+        operation(p.get_old(), Arithmetic.SUB).
+        operation(move[i], Arithmetic.ADD)
+      );
+    }
+  }
+
+  void addNeighbor(Worker neigh) {
+    neighbors.add(neigh);
+  }
+
+  void update() {
+    join {
+      for (int i=0; i<neighbors.size(); ++i) {
+        Worker w = (Worker)neighbors.get(i);
+        w <- getRange();
+      }
+    }@joinRange(token)@currentContinuation;
+  }
+
+  void joinRange(Object[] obs) {
+    for (int i=0; i<obs.length; ++i) {
+      WorldRange wr = (WorldRange)obs[i];
+      System.arraycopy(wr.range, 0, world, wr.range_begin, wr.range.length);
+    }
+  }
+
+  WorldRange getRange() {
+    return new WorldRange(world, range_begin, range_len);
+  }
+
+  Particle[] getWorld() {
+    return world;
+  }
+}
